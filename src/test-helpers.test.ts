@@ -34,7 +34,9 @@ const nodeTestMock = nodeTestMockRaw as unknown as { module?: unknown };
 
 let mockModuleImpl: (specifier: string, options: MockModuleOptions) => void;
 
-if (typeof nodeTestMock.module === "function") {
+const isBun = typeof process !== "undefined" && Boolean(process.versions?.bun);
+
+if (!isBun && typeof nodeTestMock.module === "function") {
 	mockModuleImpl = nodeTestMock.module as (specifier: string, options: MockModuleOptions) => void;
 } else {
 	const bunTest = (await import("bun:test")) as unknown as {
