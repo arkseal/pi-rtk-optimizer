@@ -53,6 +53,8 @@
     "access": "public"
   },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^1.1.0",
+    "@earendil-works/pi-tui": "^1.1.0",
     "esbuild": "0.28.1",
     "typescript": "6.0.3"
   },
@@ -62,8 +64,8 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "^0.74.0 || ^0.75.0 || ^0.78.0 || ^0.79.0 || ^0.80.0",
-    "@earendil-works/pi-tui": "^0.74.0 || ^0.75.0 || ^0.78.0 || ^0.79.0 || ^0.80.0"
+    "@earendil-works/pi-coding-agent": ">=0.74.0",
+    "@earendil-works/pi-tui": ">=0.74.0"
   },
   "overrides": {
     "protobufjs": "7.6.3",

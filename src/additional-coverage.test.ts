@@ -237,6 +237,9 @@ runTest("command detection ignores env prefixes, blank lines, and chained suffix
 	assert.equal(matchesCommandPatterns("echo hello", [/^bun test/]), false);
 });
 
+const initialRtkDbPath = process.env.RTK_DB_PATH;
+delete process.env.RTK_DB_PATH;
+
 runTest("RTK command environment preserves explicit leading RTK_DB_PATH overrides", () => {
 	const command = 'RTK_DB_PATH="/custom/history.db" rtk git diff';
 	assert.equal(applyRtkCommandEnvironment(command), command);
@@ -449,5 +452,11 @@ runTest("streaming sanitizer strips ANSI codes and preserves non-text blocks", (
 		"[rtk] warning: builtin filters: parse failure\n\nworking tree clean\n",
 	);
 });
+
+if (initialRtkDbPath === undefined) {
+	delete process.env.RTK_DB_PATH;
+} else {
+	process.env.RTK_DB_PATH = initialRtkDbPath;
+}
 
 console.log("All additional coverage tests passed.");
