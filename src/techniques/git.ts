@@ -90,6 +90,7 @@ interface StatusStats {
 	stagedFiles: string[];
 	modifiedFiles: string[];
 	untrackedFiles: string[];
+	conflictFiles: string[];
 }
 
 export function compactStatus(output: string): string {
@@ -107,6 +108,7 @@ export function compactStatus(output: string): string {
 		stagedFiles: [],
 		modifiedFiles: [],
 		untrackedFiles: [],
+		conflictFiles: [],
 	};
 
 	let branchName = "";
@@ -134,8 +136,15 @@ export function compactStatus(output: string): string {
 			stats.stagedFiles.push(filename);
 		}
 
-		if (indexStatus === "U") {
+		if (
+			indexStatus === "U" ||
+			worktreeStatus === "U" ||
+			(indexStatus === "A" && worktreeStatus === "A") ||
+			(indexStatus === "D" && worktreeStatus === "D")
+		) {
 			stats.conflicts++;
+			stats.conflictFiles.push(filename);
+			continue;
 		}
 
 		if (["M", "D"].includes(worktreeStatus)) {
@@ -183,6 +192,12 @@ export function compactStatus(output: string): string {
 
 	if (stats.conflicts > 0) {
 		result += `Conflicts: ${stats.conflicts} files\n`;
+		for (const file of stats.conflictFiles.slice(0, 5)) {
+			result += `  ${file}\n`;
+		}
+		if (stats.conflicts > 5) {
+			result += `  ... +${stats.conflicts - 5} more\n`;
+		}
 	}
 
 	return result.trim();

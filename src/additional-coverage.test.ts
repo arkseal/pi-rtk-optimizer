@@ -5,8 +5,11 @@ import { clearOutputMetrics, getOutputMetricsSummary, trackOutputSavings } from 
 import { mock, runTest } from "./test-helpers.test.ts";
 import { matchesCommandPatterns, normalizeCommandForDetection } from "./techniques/command-detection.ts";
 import { compactPath } from "./techniques/path-utils.ts";
-import { filterAggressive } from "./techniques/source.ts";
+import { filterAggressive, filterMinimal } from "./techniques/source.ts";
 import { aggregateTestOutput } from "./techniques/test-output.ts";
+import { filterBuildOutput } from "./techniques/build.ts";
+import { aggregateLinterOutput } from "./techniques/linter.ts";
+import { compactStatus } from "./techniques/git.ts";
 import { applyWindowsBashCompatibilityFixes } from "./windows-command-helpers.ts";
 import { splitLeadingEnvAssignments } from "./shell-env-prefix.ts";
 import { applyRewrittenCommandShellSafetyFixups } from "./rewrite-pipeline-safety.ts";
@@ -228,6 +231,82 @@ runTest("test output fallback counts unicode pass and fail symbols", () => {
 
 	assert.ok(result?.includes("PASS: 2 passed"));
 	assert.ok(result?.includes("FAIL: 2 failed"));
+});
+
+runTest("test output aggregation correctly extracts Vitest and Pytest failure counts without masking", () => {
+	const vitestOutput = [
+		"FAIL src/example.test.ts > testSuite > sample test",
+		"AssertionError: expected false to be true",
+		"Tests  1 failed | 5 passed (6)",
+	].join("\n");
+	const vitestResult = aggregateTestOutput(vitestOutput, "npx vitest run");
+	assert.ok(vitestResult?.includes("PASS: 5 passed"));
+	assert.ok(vitestResult?.includes("FAIL: 1 failed"));
+	assert.ok(vitestResult?.includes("Failures:"));
+
+	const pytestOutput = [
+		"FAILED tests/test_foo.py::test_bar - AssertionError",
+		"================ 1 failed, 5 passed in 0.12s ================",
+	].join("\n");
+	const pytestResult = aggregateTestOutput(pytestOutput, "pytest");
+	assert.ok(pytestResult?.includes("PASS: 5 passed"));
+	assert.ok(pytestResult?.includes("FAIL: 1 failed"));
+});
+
+runTest("build output filtering captures compiler errors and avoids false success", () => {
+	const tscOutput = "src/index.ts:10:5 - error TS2322: Type 'string' is not assignable to type 'number'.\n";
+	const tscResult = filterBuildOutput(tscOutput, "npx tsc");
+	assert.ok(tscResult?.includes("[ERROR] 1 error(s):"));
+
+	const goOutput = "main.go:5:2: undefined: fmt.Printlln\n";
+	const goResult = filterBuildOutput(goOutput, "go build");
+	assert.ok(goResult?.includes("[ERROR] 1 error(s):"));
+
+	// Unrecognized output with 0 compiled units should not hallucinate success
+	const unknownOutput = "internal failure: disk quota exceeded\n";
+	const unknownResult = filterBuildOutput(unknownOutput, "make");
+	assert.equal(unknownResult, null);
+});
+
+runTest("linter output aggregation handles stylish format and avoids masking errors", () => {
+	const stylishOutput = [
+		"/path/to/file.js",
+		"  10:5  error  'foo' is defined but never used  no-unused-vars",
+		"",
+		"✖ 1 problem (1 error, 0 warnings)",
+	].join("\n");
+	const linterResult = aggregateLinterOutput(stylishOutput, "npx eslint src");
+	assert.ok(linterResult?.includes("1 errors, 0 warnings"));
+
+	// Non-empty output with error indicators returns null instead of false OK
+	const failedLinter = "Fatal: config file .eslintrc.json invalid JSON\n";
+	assert.equal(aggregateLinterOutput(failedLinter, "npx eslint"), null);
+});
+
+runTest("git status compaction lists conflict files during merge conflicts", () => {
+	const statusOutput = "## main...origin/main\nUU src/conflict.ts\nAA src/both-added.ts\nM  src/staged.ts\n";
+	const compacted = compactStatus(statusOutput);
+	assert.ok(compacted.includes("Conflicts: 2 files"));
+	assert.ok(compacted.includes("src/conflict.ts"));
+	assert.ok(compacted.includes("src/both-added.ts"));
+});
+
+runTest("filterMinimal preserves inline code, string comments, and Python single-line docstrings", () => {
+	const codeWithInlineComment = "const a = 1; /* inline comment */\nconst b = 2;";
+	const filteredTs = filterMinimal(codeWithInlineComment, "typescript");
+	assert.ok(filteredTs.includes("const a = 1;"));
+	assert.ok(filteredTs.includes("const b = 2;"));
+
+	const codeWithString = 'const regex = "/* not comment";\nconst live = true;';
+	const filteredString = filterMinimal(codeWithString, "typescript");
+	assert.ok(filteredString.includes("const regex ="));
+	assert.ok(filteredString.includes("const live = true;"));
+
+	const pyWithDocstring = 'def foo():\n    """Single line docstring."""\n    x = 1\n    # stripped comment\n    return x';
+	const filteredPy = filterMinimal(pyWithDocstring, "python");
+	assert.ok(filteredPy.includes('"""Single line docstring."""'));
+	assert.ok(filteredPy.includes("return x"));
+	assert.equal(filteredPy.includes("# stripped comment"), false);
 });
 
 runTest("command detection ignores env prefixes, blank lines, and chained suffixes", () => {

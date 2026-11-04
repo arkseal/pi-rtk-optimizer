@@ -157,24 +157,77 @@ export function filterMinimal(content: string, language: Language): string {
 			continue;
 		}
 
-		if (patterns.blockStart && patterns.blockEnd) {
-			if (
-				!inDocstring &&
-				trimmed.includes(patterns.blockStart) &&
-				!(patterns.docBlockStart && trimmed.startsWith(patterns.docBlockStart))
-			) {
-				inBlockComment = true;
-			}
-
-			if (inBlockComment) {
-				if (trimmed.includes(patterns.blockEnd)) {
-					inBlockComment = false;
+		if (inBlockComment) {
+			if (patterns.blockEnd && line.includes(patterns.blockEnd)) {
+				inBlockComment = false;
+				const endIdx = line.indexOf(patterns.blockEnd) + patterns.blockEnd.length;
+				const afterComment = line.slice(endIdx).trim();
+				if (afterComment.length > 0) {
+					result.push(afterComment);
 				}
-				continue;
+			}
+			continue;
+		}
+
+		if (patterns.blockStart && patterns.blockEnd && !inDocstring) {
+			const isDocBlock = patterns.docBlockStart && trimmed.startsWith(patterns.docBlockStart);
+			if (!isDocBlock) {
+				const codePortion = getCodePortion(line, language);
+				// Check if block comment starts outside quotes
+				let quote: '"' | "'" | "`" | null = null;
+				let escaped = false;
+				let foundBlockStart = -1;
+				let closesOnSameLine = false;
+
+				for (let i = 0; i < line.length; i++) {
+					const ch = line[i] ?? "";
+					if (escaped) {
+						escaped = false;
+						continue;
+					}
+					if (quote !== null) {
+						if (ch === "\\") escaped = true;
+						else if (ch === quote) quote = null;
+						continue;
+					}
+					if (ch === '"' || ch === "'" || ch === "`") {
+						quote = ch;
+						continue;
+					}
+					if (line.startsWith(patterns.blockStart, i)) {
+						foundBlockStart = i;
+						const endIdx = line.indexOf(patterns.blockEnd, i + patterns.blockStart.length);
+						if (endIdx !== -1) {
+							closesOnSameLine = true;
+						}
+						break;
+					}
+				}
+
+				if (foundBlockStart !== -1) {
+					if (closesOnSameLine) {
+						if (codePortion.trim().length > 0) {
+							result.push(codePortion.trimEnd());
+						}
+						continue;
+					}
+
+					inBlockComment = true;
+					const beforeComment = line.slice(0, foundBlockStart).trimEnd();
+					if (beforeComment.trim().length > 0) {
+						result.push(beforeComment);
+					}
+					continue;
+				}
 			}
 		}
 
 		if (language === "python" && trimmed.startsWith('"""')) {
+			// Single-line docstring: """...""" (opens and closes on same line)
+			if (trimmed.length >= 6 && trimmed.slice(3).includes('"""')) {
+				result.push(line);
+				continue;
+			}
 			inDocstring = !inDocstring;
 			result.push(line);
 			continue;

@@ -65,7 +65,33 @@ function parseLine(line: string): Issue | null {
 
 function parseIssues(output: string): Issue[] {
 	const issues: Issue[] = [];
+	let currentFile = "unknown";
+	const eslintStylishPattern = /^\s*(\d+):(\d+)\s+(error|warning)\s+(.+?)(?:\s\s+([a-zA-Z0-9_/-]+))?$/i;
+
 	for (const line of output.split("\n")) {
+		// Detect file header in stylish-like format (e.g. /path/to/file.ts or src/foo.js)
+		const trimmed = line.trim();
+		if (/^[a-zA-Z0-9_./\\-]+\.[a-zA-Z0-9]+$/.test(trimmed)) {
+			currentFile = trimmed;
+			continue;
+		}
+
+		const stylishMatch = line.match(eslintStylishPattern);
+		if (stylishMatch) {
+			const lineNumber = Number.parseInt(stylishMatch[1] ?? "0", 10);
+			const severity = stylishMatch[3]?.toUpperCase() === "WARNING" ? "WARNING" : "ERROR";
+			const message = stylishMatch[4]?.trim() ?? line;
+			const rule = stylishMatch[5]?.trim() ?? "unknown";
+			issues.push({
+				severity,
+				rule,
+				file: currentFile,
+				line: Number.isNaN(lineNumber) ? undefined : lineNumber,
+				message,
+			});
+			continue;
+		}
+
 		const parsed = parseLine(line);
 		if (parsed) {
 			issues.push(parsed);
@@ -99,6 +125,10 @@ export function aggregateLinterOutput(output: string, command: string | undefine
 	const issues = parseIssues(output);
 
 	if (issues.length === 0) {
+		const hasProblems = /(?:error|fatal|fail|problem|warning|warn|invalid|exception)/i.test(output);
+		if (hasProblems && output.trim().length > 0) {
+			return null;
+		}
 		return `[OK] ${linterType}: No issues found`;
 	}
 

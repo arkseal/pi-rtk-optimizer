@@ -37,8 +37,24 @@ const SKIP_PATTERNS = [
 	/^\s*Running\s+/,
 ];
 
-const ERROR_START_PATTERNS = [/^error\[/, /^error:/, /^\[ERROR\]/, /^FAIL/];
-const WARNING_PATTERNS = [/^warning:/, /^\[WARNING\]/, /^warn:/];
+const ERROR_START_PATTERNS = [
+	/^error\[/,
+	/^error:/i,
+	/^\[ERROR\]/i,
+	/^FAIL\b/,
+	/^.+:\d+(?::\d+)?: (?:fatal )?error:/i,
+	/^.+:\d+(?::\d+)?\s+-\s+error\s+TS\d+:/i,
+	/^.+\(\d+,\d+\):\s+error\s+TS\d+:/i,
+	/^.+:\d+:\d+:\s+(?:undefined|cannot find)\b/i,
+	/^make(?:\[\d+\])?: \*\*\* \[.+\] Error \d+/i,
+];
+const WARNING_PATTERNS = [
+	/^warning:/i,
+	/^\[WARNING\]/i,
+	/^warn:/i,
+	/^.+:\d+(?::\d+)?: warning:/i,
+	/^.+:\d+(?::\d+)?\s+-\s+warning\s+TS\d+:/i,
+];
 
 function isSkipLine(line: string): boolean {
 	return SKIP_PATTERNS.some((pattern) => pattern.test(line));
@@ -129,6 +145,20 @@ export function filterBuildOutput(output: string, command: string | undefined | 
 	}
 
 	if (stats.errors.length === 0 && stats.warnings.length === 0) {
+		const hasNonSkipOutput = lines.some((line) => {
+			const trimmed = line.trim();
+			return (
+				trimmed.length > 0 &&
+				!isSkipLine(line) &&
+				!line.match(/^\s*(Compiling|Checking|Building)\s+/)
+			);
+		});
+
+		// If there is unrecognized output and no units were compiled, do not falsely claim success.
+		if (hasNonSkipOutput && stats.compiled === 0) {
+			return null;
+		}
+
 		return `[OK] Build successful (${stats.compiled} units compiled)`;
 	}
 

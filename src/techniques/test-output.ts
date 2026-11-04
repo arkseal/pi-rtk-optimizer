@@ -46,17 +46,40 @@ function isFailureStart(line: string): boolean {
 }
 
 function extractTestStats(output: string): Partial<TestSummary> {
-	for (const pattern of TEST_RESULT_PATTERNS) {
-		const match = output.match(pattern);
-		if (!match) {
-			continue;
-		}
+	// Check Cargo test format: test result: ok. 10 passed; 0 failed; ...
+	const cargoMatch = output.match(/test result:\s*(\w+)\.\s*(\d+)\s*passed;\s*(\d+)\s*failed;/i);
+	if (cargoMatch) {
 		return {
-			passed: Number.parseInt(match[1] ?? "0", 10) || 0,
-			failed: Number.parseInt(match[2] ?? "0", 10) || 0,
-			skipped: Number.parseInt(match[3] ?? "0", 10) || 0,
+			passed: Number.parseInt(cargoMatch[2] ?? "0", 10) || 0,
+			failed: Number.parseInt(cargoMatch[3] ?? "0", 10) || 0,
 		};
 	}
+
+	// Look for summary lines in test runner output (Vitest, Jest, Pytest, Go, etc.)
+	// Examples:
+	// "Tests  1 failed | 5 passed (6)"
+	// "1 failed, 5 passed, 2 skipped"
+	// "Tests: 1 failed, 5 passed, 6 total"
+	const lines = output.split("\n");
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const line = lines[i] ?? "";
+		if (!/(?:tests?|test files?|passed|failed|skipped)/i.test(line)) {
+			continue;
+		}
+
+		const failedMatch = line.match(/(\d+)\s*fail(?:ed)?\b/i);
+		const passedMatch = line.match(/(\d+)\s*pass(?:ed)?\b/i);
+		const skippedMatch = line.match(/(\d+)\s*skip(?:ped)?\b/i);
+
+		if (failedMatch || passedMatch || skippedMatch) {
+			return {
+				passed: passedMatch ? Number.parseInt(passedMatch[1] ?? "0", 10) : undefined,
+				failed: failedMatch ? Number.parseInt(failedMatch[1] ?? "0", 10) : undefined,
+				skipped: skippedMatch ? Number.parseInt(skippedMatch[1] ?? "0", 10) : undefined,
+			};
+		}
+	}
+
 	return {};
 }
 
@@ -93,52 +116,55 @@ export function aggregateTestOutput(output: string, command: string | undefined 
 		}
 	}
 
-	if (summary.failed > 0) {
-		let inFailure = false;
-		let currentFailure: string[] = [];
-		let blankCount = 0;
+	// Always extract failure blocks so errors are never masked even if summary parsing missed
+	let inFailure = false;
+	let currentFailure: string[] = [];
+	let blankCount = 0;
 
-		for (const line of lines) {
-			if (isFailureStart(line)) {
-				if (inFailure && currentFailure.length > 0) {
-					summary.failures.push(currentFailure.join("\n"));
-				}
-				inFailure = true;
-				currentFailure = [line];
-				blankCount = 0;
-				continue;
+	for (const line of lines) {
+		if (isFailureStart(line)) {
+			if (inFailure && currentFailure.length > 0) {
+				summary.failures.push(currentFailure.join("\n"));
 			}
+			inFailure = true;
+			currentFailure = [line];
+			blankCount = 0;
+			continue;
+		}
 
-			if (!inFailure) {
-				continue;
-			}
+		if (!inFailure) {
+			continue;
+		}
 
-			if (line.trim() === "") {
-				blankCount++;
-				if (blankCount >= 2 && currentFailure.length > 3) {
-					summary.failures.push(currentFailure.join("\n"));
-					inFailure = false;
-					currentFailure = [];
-				} else {
-					currentFailure.push(line);
-				}
-				continue;
-			}
-
-			if (line.match(/^\s/) || line.match(/^-/)) {
+		if (line.trim() === "") {
+			blankCount++;
+			if (blankCount >= 2 && currentFailure.length > 3) {
+				summary.failures.push(currentFailure.join("\n"));
+				inFailure = false;
+				currentFailure = [];
+			} else {
 				currentFailure.push(line);
-				blankCount = 0;
-				continue;
 			}
-
-			summary.failures.push(currentFailure.join("\n"));
-			inFailure = false;
-			currentFailure = [];
+			continue;
 		}
 
-		if (inFailure && currentFailure.length > 0) {
-			summary.failures.push(currentFailure.join("\n"));
+		if (line.match(/^\s/) || line.match(/^-/)) {
+			currentFailure.push(line);
+			blankCount = 0;
+			continue;
 		}
+
+		summary.failures.push(currentFailure.join("\n"));
+		inFailure = false;
+		currentFailure = [];
+	}
+
+	if (inFailure && currentFailure.length > 0) {
+		summary.failures.push(currentFailure.join("\n"));
+	}
+
+	if (summary.failures.length > 0 && summary.failed === 0) {
+		summary.failed = summary.failures.length;
 	}
 
 	const result: string[] = ["Test Results:"];
