@@ -7,6 +7,7 @@ export interface OutputMetricRecord {
 	savingsPercent: number;
 }
 
+export const MAX_OUTPUT_METRICS_ENTRIES = 1_000;
 const outputMetrics: OutputMetricRecord[] = [];
 
 export function trackOutputSavings(
@@ -29,6 +30,9 @@ export function trackOutputSavings(
 		savingsPercent,
 	};
 
+	if (outputMetrics.length >= MAX_OUTPUT_METRICS_ENTRIES) {
+		outputMetrics.shift();
+	}
 	outputMetrics.push(record);
 	return record;
 }

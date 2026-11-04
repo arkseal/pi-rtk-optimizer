@@ -161,9 +161,6 @@ export function createBoundedNoticeTracker(maxEntries: number): BoundedNoticeTra
 export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 	const initialLoad = loadRtkIntegrationConfig();
 	let config: RtkIntegrationConfig = initialLoad.config;
-	if (!config.enabled) {
-		return;
-	}
 
 	let pendingLoadWarning = initialLoad.warning;
 	let runtimeStatus: RuntimeStatus = { rtkAvailable: false };
@@ -279,50 +276,62 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 		}
 	};
 
+	let inFlightRuntimeStatusRefresh: Promise<RuntimeStatus> | undefined;
+
 	const refreshRuntimeStatus = async (): Promise<RuntimeStatus> => {
-		let executableResolution: RtkExecutableResolution | undefined;
-		try {
-			executableResolution = await resolveRtkExecutable(pi);
-			const result = await pi.exec(executableResolution.command, ["--version"], { timeout: 5000 });
-			if (result.code === 0) {
+		if (inFlightRuntimeStatusRefresh) {
+			return inFlightRuntimeStatusRefresh;
+		}
+
+		inFlightRuntimeStatusRefresh = (async () => {
+			let executableResolution: RtkExecutableResolution | undefined;
+			try {
+				executableResolution = await resolveRtkExecutable(pi);
+				const result = await pi.exec(executableResolution.command, ["--version"], { timeout: 5000 });
+				if (result.code === 0) {
+					runtimeStatus = {
+						rtkAvailable: true,
+						lastCheckedAt: Date.now(),
+						rtkExecutablePath: executableResolution.resolvedPath,
+						rtkExecutableCommand: executableResolution.command,
+						rtkExecutableResolver: executableResolution.resolver,
+						rtkExecutableResolutionWarning: executableResolution.warning,
+					};
+					missingRtkWarningShown = false;
+					return runtimeStatus;
+				}
+
+				const detail = trimMessage(
+					`${result.stderr || ""} ${result.stdout || ""} ${result.code ? `(exit ${result.code})` : ""}`,
+				);
 				runtimeStatus = {
-					rtkAvailable: true,
+					rtkAvailable: false,
 					lastCheckedAt: Date.now(),
+					lastError: detail || `exit ${result.code}`,
 					rtkExecutablePath: executableResolution.resolvedPath,
 					rtkExecutableCommand: executableResolution.command,
 					rtkExecutableResolver: executableResolution.resolver,
 					rtkExecutableResolutionWarning: executableResolution.warning,
 				};
-				missingRtkWarningShown = false;
 				return runtimeStatus;
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				runtimeStatus = {
+					rtkAvailable: false,
+					lastCheckedAt: Date.now(),
+					lastError: trimMessage(message),
+					rtkExecutablePath: executableResolution?.resolvedPath,
+					rtkExecutableCommand: executableResolution?.command,
+					rtkExecutableResolver: executableResolution?.resolver,
+					rtkExecutableResolutionWarning: executableResolution?.warning,
+				};
+				return runtimeStatus;
+			} finally {
+				inFlightRuntimeStatusRefresh = undefined;
 			}
+		})();
 
-			const detail = trimMessage(
-				`${result.stderr || ""} ${result.stdout || ""} ${result.code ? `(exit ${result.code})` : ""}`,
-			);
-			runtimeStatus = {
-				rtkAvailable: false,
-				lastCheckedAt: Date.now(),
-				lastError: detail || `exit ${result.code}`,
-				rtkExecutablePath: executableResolution.resolvedPath,
-				rtkExecutableCommand: executableResolution.command,
-				rtkExecutableResolver: executableResolution.resolver,
-				rtkExecutableResolutionWarning: executableResolution.warning,
-			};
-			return runtimeStatus;
-		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
-			runtimeStatus = {
-				rtkAvailable: false,
-				lastCheckedAt: Date.now(),
-				lastError: trimMessage(message),
-				rtkExecutablePath: executableResolution?.resolvedPath,
-				rtkExecutableCommand: executableResolution?.command,
-				rtkExecutableResolver: executableResolution?.resolver,
-				rtkExecutableResolutionWarning: executableResolution?.warning,
-			};
-			return runtimeStatus;
-		}
+		return inFlightRuntimeStatusRefresh;
 	};
 
 	const maybeWarnRtkMissing = (ctx: ExtensionContext): void => {
@@ -379,7 +388,18 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 	});
 
 
+	pi.on("session_shutdown", async () => {
+		warnedMessages.reset();
+		suggestionNotices.reset();
+		clearTrackedBashCommands();
+		missingRtkWarningShown = false;
+	});
+
 	pi.on("agent_end", async () => {
+		clearTrackedBashCommands();
+	});
+
+	pi.on("agent_settled", async () => {
 		clearTrackedBashCommands();
 	});
 
@@ -428,6 +448,15 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 		maybeWarnRtkMissing(ctx);
 
 		if (!shouldInjectSourceFilterTroubleshootingNote(config)) {
+			return {};
+		}
+
+		// Prefer modifying structured promptGuidelines when available to preserve provider prompt caching
+		const promptOptions = (event as { systemPromptOptions?: { promptGuidelines?: string[] } }).systemPromptOptions;
+		if (promptOptions?.promptGuidelines && Array.isArray(promptOptions.promptGuidelines)) {
+			if (!promptOptions.promptGuidelines.includes(SOURCE_FILTER_TROUBLESHOOTING_NOTE)) {
+				promptOptions.promptGuidelines.push(SOURCE_FILTER_TROUBLESHOOTING_NOTE);
+			}
 			return {};
 		}
 

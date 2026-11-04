@@ -182,6 +182,14 @@ runTest("output metrics summarize tracked savings and clear state", () => {
 
 	clearOutputMetrics();
 	assert.equal(getOutputMetricsSummary(), "RTK output compaction metrics: no data yet.");
+
+	// Verify bounding to MAX_OUTPUT_METRICS_ENTRIES to prevent memory leaks
+	for (let i = 0; i < 1_005; i++) {
+		trackOutputSavings("hello", "he", "bash", []);
+	}
+	const boundedSummary = getOutputMetricsSummary();
+	assert.ok(boundedSummary.includes("calls=1000,"));
+	clearOutputMetrics();
 });
 
 runTest("aggressive source filtering ignores string and inline comment braces while tracking implementation blocks", () => {

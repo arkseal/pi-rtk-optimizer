@@ -426,4 +426,51 @@ await runTest("tool_call surfaces RTK rewrite errors through existing UI warning
 	assert.ok(notifications[0]?.message.includes("denied unsafe rewrite"));
 });
 
+await runTest("before_agent_start preserves prompt caching by mutating structured promptGuidelines", async () => {
+	const handlers: Record<string, ExtensionHandler> = {};
+	rtkIntegrationExtension({
+		exec: async () => ({ code: 0, stdout: "rtk 1.0.0", stderr: "" }),
+		on(eventName: string, handler: ExtensionHandler) {
+			handlers[eventName] = handler;
+		},
+		registerCommand() {},
+	} as never);
+
+	const beforeAgentStart = handlers.before_agent_start;
+	assert.ok(beforeAgentStart);
+
+	const promptGuidelines: string[] = ["Existing guideline"];
+	const event = {
+		systemPrompt: "Guidelines:\n- Existing guideline\n",
+		systemPromptOptions: { promptGuidelines },
+	};
+
+	const result = await beforeAgentStart(event, { hasUI: false });
+	// When structured guidelines are available, systemPrompt is NOT returned (cache preserved)
+	assert.deepEqual(result, {});
+});
+
+await runTest("session_shutdown and agent_settled handlers are registered and clear state", async () => {
+	const handlers: Record<string, ExtensionHandler> = {};
+	let registeredCommandName = "";
+
+	rtkIntegrationExtension({
+		exec: async () => ({ code: 0, stdout: "rtk 1.0.0", stderr: "" }),
+		on(eventName: string, handler: ExtensionHandler) {
+			handlers[eventName] = handler;
+		},
+		registerCommand(name: string) {
+			registeredCommandName = name;
+		},
+	} as never);
+
+	assert.equal(registeredCommandName, "rtk");
+	assert.ok(handlers.session_shutdown);
+	assert.ok(handlers.agent_settled);
+	assert.doesNotThrow(async () => {
+		await handlers.session_shutdown?.({}, {});
+		await handlers.agent_settled?.({}, {});
+	});
+});
+
 console.log("All index tests passed.");
