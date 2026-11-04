@@ -1,10 +1,11 @@
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { splitLeadingEnvAssignments } from "./shell-env-prefix.js";
 
 const RTK_DB_PATH_ENV_NAME = "RTK_DB_PATH";
 const SINGLE_QUOTED_SHELL_VALUE_PATTERN = "'(?:'\\\\''|[^'])*'";
-const SHELL_ENV_VALUE_PATTERN = `(?:"[^"]*"|${SINGLE_QUOTED_SHELL_VALUE_PATTERN}|[^\\s;]+)`;
+const SHELL_ENV_VALUE_PATTERN = `(?:"(?:\\\\.|[^"])*"|${SINGLE_QUOTED_SHELL_VALUE_PATTERN}|[^\\s;&|]+)`;
 const RTK_DB_PATH_ASSIGNMENT_PATTERN = new RegExp(
 	`(?:^|\\s)RTK_DB_PATH=${SHELL_ENV_VALUE_PATTERN}(?=\\s|$)`,
 );
@@ -44,7 +45,13 @@ function resolveTemporaryDirectory(): string {
 }
 
 function getTemporaryRtkHistoryDbPath(): string {
-	return join(resolveTemporaryDirectory(), "pi-rtk-optimizer", "history.db");
+	const dir = join(resolveTemporaryDirectory(), "pi-rtk-optimizer");
+	try {
+		mkdirSync(dir, { recursive: true });
+	} catch {
+		// Ignore directory creation failure (e.g. read-only filesystem)
+	}
+	return join(dir, "history.db");
 }
 
 function quoteForShellEnv(value: string): string {

@@ -105,8 +105,22 @@ function ensurePythonUtf8(command: string): { command: string; changed: boolean 
 		return { command, changed: false };
 	}
 
+	// In bash, setting an env prefix before a command like 'VAR=val cd dir && python script.py'
+	// only exports VAR to the 'cd' builtin; subsequent commands chained with &&, ||, or ;
+	// never receive it. Use an export prelude for chained commands so python actually sees it.
+	const isLeadingPython = /^(?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|[^\s]+)\s+)*python(?:3(?:\.\d+)?)?\b/i.test(
+		command.trimStart(),
+	);
+
+	if (isLeadingPython) {
+		return {
+			command: `${PYTHON_UTF8_ENV_PREFIX} ${command}`,
+			changed: true,
+		};
+	}
+
 	return {
-		command: `${PYTHON_UTF8_ENV_PREFIX} ${command}`,
+		command: `export ${PYTHON_UTF8_ENV_PREFIX}; ${command}`,
 		changed: true,
 	};
 }

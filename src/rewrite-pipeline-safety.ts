@@ -120,7 +120,7 @@ function buildBufferedPipelineCommand(
 	const cleanupTrap = `rm -f "$${tempFileVariable}"`;
 
 	return [
-		"{",
+		"(",
 		`${tempFileVariable}="$(mktemp)" || exit $?;`,
 		`${statusVariable}=0;`,
 		`trap '${cleanupTrap}' EXIT HUP INT TERM;`,
@@ -128,7 +128,7 @@ function buildBufferedPipelineCommand(
 		`${statusVariable}=$?;`,
 		`if [ $${statusVariable} -eq 0 ]; then (${remainder}) < "$${tempFileVariable}"; ${statusVariable}=$?; fi;`,
 		`exit $${statusVariable};`,
-		"}",
+		")",
 	].join(" ");
 }
 

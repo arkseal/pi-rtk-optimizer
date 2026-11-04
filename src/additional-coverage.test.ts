@@ -8,6 +8,7 @@ import { compactPath } from "./techniques/path-utils.ts";
 import { filterAggressive } from "./techniques/source.ts";
 import { aggregateTestOutput } from "./techniques/test-output.ts";
 import { applyWindowsBashCompatibilityFixes } from "./windows-command-helpers.ts";
+import { splitLeadingEnvAssignments } from "./shell-env-prefix.ts";
 import { applyRewrittenCommandShellSafetyFixups } from "./rewrite-pipeline-safety.ts";
 import { applyRtkCommandEnvironment } from "./rtk-command-environment.ts";
 import { sanitizeStreamingBashExecutionResult } from "./tool-execution-sanitizer.ts";
@@ -329,7 +330,7 @@ runTest("windows bash compatibility rewrites only when the runtime is Windows", 
 	assert.deepEqual(fixed.applied, ["cd-/d", "python-utf8"]);
 	assert.equal(
 		fixed.command,
-		'PYTHONIOENCODING=utf-8 cd "C:/Users/Administrator/project" && python script.py',
+		'export PYTHONIOENCODING=utf-8; cd "C:/Users/Administrator/project" && python script.py',
 	);
 
 	const unchanged = applyWindowsBashCompatibilityFixes(command, "linux");
@@ -394,7 +395,7 @@ runTest("rewrite pipeline safety keeps exported RTK_DB_PATH on rewritten produce
 
 	assert.ok(rewritten.startsWith("export RTK_DB_PATH="));
 	assert.equal(rewritten.startsWith("RTK_DB_PATH="), false);
-	assert.ok(rewritten.includes("; {"));
+	assert.ok(rewritten.includes("; ("));
 	assert.ok(
 		rewritten.includes('rtk git diff agent/extensions/pi-multi-auth/account-manager.ts > "$__pi_rtk_pipe_tmp"'),
 	);
@@ -407,7 +408,7 @@ runTest("rewrite pipeline safety buffers explicit RTK_DB_PATH export preludes", 
 	const command = 'export RTK_DB_PATH="/custom/history.db"; rtk git diff | head -200';
 	const rewritten = applyRewrittenCommandShellSafetyFixups(command, "win32");
 
-	assert.ok(rewritten.startsWith('export RTK_DB_PATH="/custom/history.db"; {'));
+	assert.ok(rewritten.startsWith('export RTK_DB_PATH="/custom/history.db"; ('));
 	assert.ok(rewritten.includes('rtk git diff > "$__pi_rtk_pipe_tmp"'));
 	assert.ok(rewritten.includes('(head -200) < "$__pi_rtk_pipe_tmp"'));
 
@@ -418,6 +419,23 @@ runTest("RTK command environment uses export prelude for shell compound commands
 	const rewritten = applyRtkCommandEnvironment('for d in a b; do echo "$d"; done');
 	assert.ok(/^export RTK_DB_PATH=/.test(rewritten));
 	assert.ok(/; for d in a b; do echo "\$d"; done$/.test(rewritten));
+});
+
+runTest("splitLeadingEnvAssignments handles escaped quotes and avoids swallowing semicolons", () => {
+	const escaped = splitLeadingEnvAssignments('MSG="hello \\"world\\"" rtk git status');
+	assert.equal(escaped.envPrefix, 'MSG="hello \\"world\\"" ');
+	assert.equal(escaped.command, 'rtk git status');
+
+	const semi = splitLeadingEnvAssignments('FOO=1; rtk git status');
+	assert.equal(semi.envPrefix, '');
+	assert.equal(semi.command, 'FOO=1; rtk git status');
+});
+
+runTest("rewrite pipeline safety uses subshell to allow chained operators", () => {
+	const command = "rtk git diff | grep TODO && echo done";
+	const rewritten = applyRewrittenCommandShellSafetyFixups(command, "win32");
+	assert.ok(rewritten.startsWith("("));
+	assert.ok(rewritten.includes(") && echo done"));
 });
 
 runTest("streaming sanitizer strips ANSI codes and preserves non-text blocks", () => {
