@@ -236,6 +236,20 @@ runTest("command detection ignores env prefixes, blank lines, and chained suffix
 	assert.equal(normalizeCommandForDetection("   "), null);
 	assert.equal(matchesCommandPatterns("CI=1 bun test | head -5", [/^bun test/]), true);
 	assert.equal(matchesCommandPatterns("echo hello", [/^bun test/]), false);
+
+	// Rewritten RTK commands with export preludes
+	assert.equal(
+		normalizeCommandForDetection("export RTK_DB_PATH='/tmp/pi-rtk-optimizer/history.db'; rtk git status"),
+		"git status",
+	);
+	// Compound commands with cd directory navigation
+	assert.equal(normalizeCommandForDetection("cd /workspace && npm test"), "npm test");
+	assert.equal(normalizeCommandForDetection("cd /workspace && rtk cargo test"), "cargo test");
+	// Semicolons inside quotes preserved
+	assert.equal(
+		normalizeCommandForDetection('git commit -m "fix; update tests" && git push'),
+		'git commit -m "fix; update tests"',
+	);
 });
 
 const initialRtkDbPath = process.env.RTK_DB_PATH;
