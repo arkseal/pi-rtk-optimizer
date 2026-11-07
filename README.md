@@ -235,7 +235,7 @@ src/
 ├── constants.ts                 # Shared extension constants
 ├── record-utils.ts              # Record/object guards
 ├── types.ts                     # Shared config/runtime types
-├── types-shims.d.ts             # Ambient Pi package shims for local typecheck
+├── test-env.d.ts                # Test environment declarations for bun:test
 ├── zellij-modal.ts              # Vendored modal renderer used by settings UI
 └── techniques/                  # Compaction technique implementations
     ├── ansi.ts                  # ANSI code stripping
@@ -258,8 +258,8 @@ The extension hooks into Pi's event system:
 - **`tool_call`** — Rewrites bash commands to rtk equivalents or emits suggestions
 - **`tool_result`** — Compacts completed tool output before context consumption
 - **`tool_execution_start` / `tool_execution_update` / `tool_execution_end`** — Tracks and sanitizes streamed bash output
-- **`before_agent_start`** — Conditionally injects source-filter troubleshooting guidance
-- **`session_start` / `agent_end`** — Refreshes config and clears in-session tracking state
+- **`before_agent_start`** — Conditionally injects source-filter troubleshooting guidance (preserves provider prompt caching via `promptGuidelines`)
+- **`session_start` / `session_shutdown` / `agent_end` / `agent_settled`** — Refreshes config and clears in-session tracking state
 - **Registered `/rtk` command** — Handles settings, status, verification, stats, and reset subcommands
 
 ### Windows Compatibility
@@ -271,23 +271,20 @@ Automatic fixes applied on Windows:
 
 ### Dependencies
 
-- **Peer dependencies:** `@earendil-works/pi-coding-agent`, `@earendil-works/pi-tui`
+- **Peer dependencies:** `@earendil-works/pi-coding-agent` (*), `@earendil-works/pi-tui` (*)
 - **Runtime:** Node.js ≥20, optional `rtk` binary for command rewriting
-- **Development verification:** Node.js ≥24 and npm for Node/tsx test scripts using Node's experimental test module mocks
+- **Development verification:** Node.js ≥20, Bun, and TypeScript
 
 ## Development
 
 ```bash
-# Transpile-only TypeScript build check
-npm run build
-
 # Full typecheck
 npm run typecheck
 
-# Run Node/tsx tests
+# Run tests via Bun
 npm run test
 
-# Full verification
+# Full verification (typecheck + test + bundle check)
 npm run check
 
 # Bundle sanity check

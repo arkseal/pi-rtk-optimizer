@@ -1,3 +1,4 @@
+import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
@@ -35,7 +36,7 @@ export interface ToolResultCompactionMetadata {
 
 export interface ToolResultCompactionOutcome {
 	changed: boolean;
-	content?: unknown[];
+	content?: (TextContent | ImageContent)[];
 	techniques: string[];
 	metadata?: ToolResultCompactionMetadata;
 }
@@ -688,7 +689,7 @@ export function compactToolResult(
 
 	return {
 		changed: true,
-		content: nextContent,
+		content: nextContent as (TextContent | ImageContent)[],
 		techniques,
 		metadata,
 	};

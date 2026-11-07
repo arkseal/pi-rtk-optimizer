@@ -1,4 +1,10 @@
-import { isToolCallEventType, type ExtensionAPI, type ExtensionCommandContext, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+	isToolCallEventType,
+	type ExtensionAPI,
+	type ExtensionCommandContext,
+	type ExtensionContext,
+	type ToolResultEventResult,
+} from "@earendil-works/pi-coding-agent";
 import {
 	ensureConfigExists,
 	getRtkIntegrationConfigPath,
@@ -534,9 +540,9 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 		return {};
 	});
 
-	pi.on("tool_result", async (event, ctx) => {
+	pi.on("tool_result", async (event, ctx): Promise<ToolResultEventResult | void> => {
 		if (!config.enabled || !config.outputCompaction.enabled) {
-			return {};
+			return;
 		}
 
 		try {
@@ -551,7 +557,7 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 			);
 
 			if (!outcome.changed || !outcome.content) {
-				return {};
+				return;
 			}
 
 			return {
@@ -561,7 +567,7 @@ export default function rtkIntegrationExtension(pi: ExtensionAPI): void {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			warnOnce(ctx, `${EXTENSION_NAME}: output compaction failed, using raw output (${trimMessage(message)}).`);
-			return {};
+			return;
 		}
 	});
 }
