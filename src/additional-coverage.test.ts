@@ -274,6 +274,16 @@ runTest("build output filtering captures compiler errors and avoids false succes
 	const unknownOutput = "internal failure: disk quota exceeded\n";
 	const unknownResult = filterBuildOutput(unknownOutput, "make");
 	assert.equal(unknownResult, null);
+
+	// Empty build output returns null
+	assert.equal(filterBuildOutput("", "make"), null);
+	assert.equal(filterBuildOutput("   \n", "cargo build"), null);
+});
+
+runTest("test output aggregation returns null on unrecognized test crash to avoid masking", () => {
+	const crashOutput = "Error: Cannot find module 'spec/index.js'\n    at require (node:internal/modules/cjs/loader:123:45)\n";
+	assert.equal(aggregateTestOutput(crashOutput, "npm test"), null);
+	assert.equal(aggregateTestOutput("", "npm test"), null);
 });
 
 runTest("linter output aggregation handles stylish format and avoids masking errors", () => {
@@ -289,6 +299,13 @@ runTest("linter output aggregation handles stylish format and avoids masking err
 	// Non-empty output with error indicators returns null instead of false OK
 	const failedLinter = "Fatal: config file .eslintrc.json invalid JSON\n";
 	assert.equal(aggregateLinterOutput(failedLinter, "npx eslint"), null);
+
+	// Arbitrary unexpected non-empty output returns null instead of false OK
+	const unexpectedLinter = "Unexpected token '}' at 1:1\n";
+	assert.equal(aggregateLinterOutput(unexpectedLinter, "npx eslint"), null);
+
+	// Explicit clean report produces OK
+	assert.equal(aggregateLinterOutput("0 errors, 0 warnings", "npx eslint"), "[OK] ESLint: No issues found");
 });
 
 runTest("git status compaction lists conflict files during merge conflicts", () => {

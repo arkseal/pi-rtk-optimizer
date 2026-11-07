@@ -125,11 +125,18 @@ export function aggregateLinterOutput(output: string, command: string | undefine
 	const issues = parseIssues(output);
 
 	if (issues.length === 0) {
-		const hasProblems = /(?:error|fatal|fail|problem|warning|warn|invalid|exception)/i.test(output);
-		if (hasProblems && output.trim().length > 0) {
-			return null;
+		const trimmedOutput = output.trim();
+		if (trimmedOutput.length === 0) {
+			return `[OK] ${linterType}: No issues found`;
 		}
-		return `[OK] ${linterType}: No issues found`;
+
+		const isExplicitSuccess = /(?:no issues|no problems|all files pass|0 errors?|0 problems?)/i.test(trimmedOutput);
+		if (isExplicitSuccess) {
+			return `[OK] ${linterType}: No issues found`;
+		}
+
+		// Unknown/unparsed non-empty output must not become a false success
+		return null;
 	}
 
 	const errors = issues.filter((issue) => issue.severity === "ERROR").length;

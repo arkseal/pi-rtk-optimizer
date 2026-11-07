@@ -18,7 +18,7 @@ interface ShellSafetyTarget {
 }
 
 const SINGLE_QUOTED_SHELL_VALUE_PATTERN = "'(?:'\\\\''|[^'])*'";
-const SHELL_ENV_VALUE_PATTERN = `(?:"(?:\\\\.|[^"])*"|${SINGLE_QUOTED_SHELL_VALUE_PATTERN}|[^\\s;]+)`;
+const SHELL_ENV_VALUE_PATTERN = `(?:"(?:\\\\.|[^"])*"|${SINGLE_QUOTED_SHELL_VALUE_PATTERN}|[^\\s;&|]+)`;
 const LEADING_RTK_DB_PATH_EXPORT_PRELUDE_PATTERN = new RegExp(
 	`^(\\s*export\\s+RTK_DB_PATH=${SHELL_ENV_VALUE_PATTERN}\\s*;\\s*)([\\s\\S]*)$`,
 	"u",

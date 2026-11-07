@@ -35,6 +35,7 @@ const SKIP_PATTERNS = [
 	/^\s*Generated\s+/,
 	/^\s*Creating\s+/,
 	/^\s*Running\s+/,
+	/^\s*Finished\s+/,
 ];
 
 const ERROR_START_PATTERNS = [
@@ -145,6 +146,10 @@ export function filterBuildOutput(output: string, command: string | undefined | 
 	}
 
 	if (stats.errors.length === 0 && stats.warnings.length === 0) {
+		if (output.trim().length === 0) {
+			return null;
+		}
+
 		const hasNonSkipOutput = lines.some((line) => {
 			const trimmed = line.trim();
 			return (
@@ -154,8 +159,8 @@ export function filterBuildOutput(output: string, command: string | undefined | 
 			);
 		});
 
-		// If there is unrecognized output and no units were compiled, do not falsely claim success.
-		if (hasNonSkipOutput && stats.compiled === 0) {
+		// If there is unrecognized output or no compiled units, do not falsely claim success.
+		if (hasNonSkipOutput || stats.compiled === 0) {
 			return null;
 		}
 

@@ -167,6 +167,16 @@ export function aggregateTestOutput(output: string, command: string | undefined 
 		summary.failed = summary.failures.length;
 	}
 
+	// If no test summary or failures could be recognized, do not falsely claim success or invent a 0/0 pass
+	if (
+		summary.passed === 0 &&
+		summary.failed === 0 &&
+		summary.skipped === 0 &&
+		summary.failures.length === 0
+	) {
+		return null;
+	}
+
 	const result: string[] = ["Test Results:"];
 	result.push(`   PASS: ${summary.passed} passed`);
 	if (summary.failed > 0) {
