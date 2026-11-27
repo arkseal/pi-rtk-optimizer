@@ -863,7 +863,7 @@ export class ZellijSettingsModal implements ZellijModalContentRenderer {
 		const safeWidth = Math.max(1, width);
 		try {
 			if (!this.showTabs) {
-				return this.container.render(safeWidth);
+				return [...this.container.render(safeWidth)];
 			}
 
 			const lines: string[] = [];
